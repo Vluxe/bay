@@ -1,12 +1,17 @@
 package bay
 
 import (
+	"archive/tar"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"time"
 
+	"github.com/fsouza/go-dockerclient"
+	"github.com/libgit2/git2go"
 	"github.com/samalba/dockerclient"
 )
 
@@ -15,11 +20,54 @@ var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456
 const (
 	golangEnv = iota // our environment types.
 	rubyEnv
+	railsEnv
 	pythonEnv
+	djangoEnv
 )
 
+// BuildWithGitRepo takes a git url and an environment to build a docker image.
+// Returns the container ID of the newly built docker image.
+func BuildWithGitRepo(environment int, gitUrl string) (string, error) {
+	client, err := docker.NewClient("unix:///var/run/docker.sock") // probably need to be configurable.
+	if err != nil {
+		return "", err
+	}
+	directoryName := randomStringName()
+	os.Mkdir(directoryName, os.ModePerm)
+
+	if _, err := git.Clone(gitUrl, directoryName, &git.CloneOptions{}); err != nil {
+		return "", nil
+	}
+
+	f, err := os.Open(directoryName + "/Dockerfile")
+	if err != nil {
+		return "", err
+	}
+	t := time.Now()
+	inputbuf, outputbuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
+	tr := tar.NewWriter(inputbuf)
+	tr.WriteHeader(&tar.Header{Name: "Dockerfile", Size: 10, ModTime: t, AccessTime: t, ChangeTime: t})
+	io.Copy(tr, f)
+	tr.Close()
+	opts := docker.BuildImageOptions{
+		Name:         "test",
+		InputStream:  inputbuf,
+		OutputStream: outputbuf,
+	}
+	if err := client.BuildImage(opts); err != nil {
+		return "", err
+	}
+
+	buffer := new(bytes.Buffer)
+	io.Copy(buffer, outputbuf)         // get rid of this
+	fmt.Println("buffer is: ", buffer) // debugging crap.
+	return "", nil
+}
+
+// BuildWithFiles takes files and an environment to build a docker image.
+// Returns the container ID of the newly built docker image.
 func BuildWithFiles(environment int, files [][]byte, fileNames []string) (string, error) {
-	client, err := dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
+	client, err := dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil) // probably need to be configurable.
 	if err != nil {
 		return "", err
 	}
@@ -75,11 +123,18 @@ func randomPortNumber() map[string]struct{} {
 // getDockerConfig returns a docker config depending on what environment/language chosen.
 func getDockerConfig(environment int) (*dockerclient.ContainerConfig, error) {
 	buildImage := ""
-	if environment == golangEnv {
+	switch environment {
+	case golangEnv:
 		buildImage = "golang:onbuild"
-	}
-
-	if buildImage == "" {
+	case rubyEnv:
+		buildImage = "rails:onbuild"
+	case railsEnv:
+		buildImage = "ruby:onbuild"
+	case pythonEnv:
+		buildImage = "python:onbuild"
+	case djangoEnv:
+		buildImage = "django:onbuild"
+	default:
 		return nil, errors.New("not a valid environment.")
 	}
 
