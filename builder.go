@@ -18,21 +18,21 @@ import (
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
 
 const (
-	golangEnv = iota // our environment types.
-	rubyEnv
-	railsEnv
-	pythonEnv
-	djangoEnv
+	GolangEnv = iota // our environment types.
+	RubyEnv
+	RailsEnv
+	PythonEnv
+	DjangoEnv
 )
 
 // BuildWithGitRepo takes a git url and an environment to build a docker image.
 // Returns the container ID of the newly built docker image.
-func BuildWithGitRepo(environment int, gitUrl string) (string, error) {
+func BuildWithGitRepo(environment int, gitUrl string, gitCommit string) (string, error) {
 	client, err := docker.NewClient("unix:///var/run/docker.sock") // probably need to be configurable.
 	if err != nil {
 		return "", err
 	}
-	directoryName := randomStringName()
+	directoryName := gitCommit
 	os.Mkdir(directoryName, os.ModePerm)
 
 	if _, err := git.Clone(gitUrl, directoryName, &git.CloneOptions{}); err != nil {
@@ -124,15 +124,15 @@ func randomPortNumber() map[string]struct{} {
 func getDockerConfig(environment int) (*dockerclient.ContainerConfig, error) {
 	buildImage := ""
 	switch environment {
-	case golangEnv:
+	case GolangEnv:
 		buildImage = "golang:onbuild"
-	case rubyEnv:
+	case RubyEnv:
 		buildImage = "rails:onbuild"
-	case railsEnv:
+	case RailsEnv:
 		buildImage = "ruby:onbuild"
-	case pythonEnv:
+	case PythonEnv:
 		buildImage = "python:onbuild"
-	case djangoEnv:
+	case DjangoEnv:
 		buildImage = "django:onbuild"
 	default:
 		return nil, errors.New("not a valid environment.")
