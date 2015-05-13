@@ -16,13 +16,13 @@ type worker struct {
 // StartWorker starts a worker. Currently it starts an HTTP server
 // to "talk" with the frontend server, but a WebSocket might be a better call.
 func StartWorker(address string) {
-	w := worker{address: address}
+	//w := worker{address: address}
 	r := helm.New(fallThrough)
 	r.POST("/gitJob", gitJobHandler)
 	r.Run(address)
 }
 
 func gitJobHandler(w http.ResponseWriter, r *http.Request, params url.Values) {
-	BuildWithGitRepo(gitUrl, commitId)
+	//BuildWithGitRepo(gitUrl, commitId)
 	fmt.Fprintf(w, "ok")
 }
