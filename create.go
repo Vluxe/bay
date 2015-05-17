@@ -23,8 +23,27 @@ func (s *server) buildWithGit(gitUrl, lang string) (*docker.Container, error) {
 
 }
 
-func (s *server) buildWithFiles(f *os.File, lang string) {
+func (s *server) buildWithFiles(f *os.File, lang, contentType string) (*docker.Container, error) {
+	if s.config.BuildInterface != nil {
+		s.config.BuildInterface.PreBuild(f, lang)
+	}
 
+	defer os.Remove(f.Name())
+	dir, err := ioutil.TempDir("", "bay-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+
+	if contentType == "application/zip" {
+		// unzip into dir.
+	}
+
+	if s.config.BuildInterface != nil {
+		s.config.BuildInterface.PostBuild(f, lang)
+	}
+
+	return createContainer(dir, lang)
 }
 
 func (s *server) createContainer(dir, lang string) {
@@ -56,6 +75,8 @@ func imageFromLang(lang string) string {
 	case "ruby":
 		return "name"
 	case "perl":
+		return "name"
+	case "php":
 		return "name"
 	}
 	return "whatever the default image is"
