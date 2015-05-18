@@ -14,8 +14,8 @@ import (
 )
 
 type Build interface {
-	PreBuild(f *os.File, lang string) error
-	PostBuild(f *os.File, lang string) error
+	PreBuild(f *os.File, lang string, err error) error
+	PostBuild(f *os.File, lang string, err error) error
 }
 
 type Config struct {

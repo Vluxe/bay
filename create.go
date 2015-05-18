@@ -1,6 +1,7 @@
 package bay
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
 
@@ -24,29 +25,38 @@ func (s *server) buildWithGit(gitUrl, lang string) (*docker.Container, error) {
 }
 
 func (s *server) buildWithFiles(f *os.File, lang, contentType string) (*docker.Container, error) {
-	if s.config.BuildInterface != nil {
-		s.config.BuildInterface.PreBuild(f, lang)
-	}
+	defer f.Close()
 
-	defer os.Remove(f.Name())
 	dir, err := ioutil.TempDir("", "bay-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
 
-	if contentType == "application/zip" {
-		// unzip into dir.
+	tmpFile, err := ioutil.TempFile(dir, "upload-")
+	if err != nil {
+		return err
 	}
 
-	if s.config.BuildInterface != nil {
-		s.config.BuildInterface.PostBuild(f, lang)
+	_, err = io.Copy(tmpFile, f)
+	if err != nil {
+		return err
+	}
+
+	defer os.Remove(f.Name())
+
+	if s.config.BuildInterface != nil { // might need to move this after the unzip...
+		s.config.BuildInterface.PreBuild(tmpFile, lang, err)
+	}
+
+	if contentType == "application/zip" {
+		// unzip into dir.
 	}
 
 	return createContainer(dir, lang)
 }
 
-func (s *server) createContainer(dir, lang string) {
+func (s *server) createContainer(dir, lang string) (*docker.Container, error) {
 	volPathOpts := docker.NewPathOpts()
 	volPathOpts.Set(dir)
 	config := &docker.Config{
@@ -59,7 +69,13 @@ func (s *server) createContainer(dir, lang string) {
 		Image:           imageFromLang(lang),
 		NetworkDisabled: false,
 	}
-	return s.dockerClient.CreateContainer(config)
+	container, err := s.dockerClient.CreateContainer(config)
+
+	if s.config.BuildInterface != nil {
+		s.config.BuildInterface.PostBuild(f, lang, err)
+	}
+
+	return container, err
 }
 
 func imageFromLang(lang string) string {
