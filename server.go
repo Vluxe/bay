@@ -3,24 +3,23 @@ package bay
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 
 	"github.com/acmacalister/helm"
 	"github.com/fsouza/go-dockerclient"
 )
 
+// Build is type for implementing callback functions set in your config.
 type Build interface {
-	PreBuild(f *os.File, lang string, err error) error
-	PostBuild(f *os.File, lang string, err error) error
+	PreBuild(buildDir, lang string, err error)                     // PreBuild gets called before the docker image is built.
+	PostBuild(container *docker.Container, lang string, err error) // PostBuild is called after the docker image is built.
 }
 
+// Config is a type for configuring the properties of bay.
 type Config struct {
-	Cpu            int    // Cpu is the number of CPUs allowed by each container.
-	Memory         int    // Memory is the amount of memory allowed by each container.
+	CPU            int64  // Cpu is the number of CPUs allowed by each container.
+	Memory         int64  // Memory is the amount of memory allowed by each container.
 	DockerUrl      string // DockerUrl is the url to your docker instance. Generally your swarm url.
 	Cert           string // Cert is your TLS certificate for connecting to your docker instance.
 	Key            string // Key is your TLS key for connecting to your docker instance.
@@ -28,11 +27,13 @@ type Config struct {
 	BuildInterface Build  // BuildInterface is the Build Interface.
 }
 
+// server is a internal struct used by http handlers.
 type server struct {
 	config       *Config
-	dockerClient *docker.Client
+	dockerClient *docker.Client // the actual init'ed and connected docker client.
 }
 
+// response is a simple struct for writing back json messages.
 type response struct {
 	Response string `json:"response"`
 }
@@ -46,7 +47,7 @@ func Start(address string, c *Config) error {
 	s := server{config: c, dockerClient: client}
 	r := helm.New(fallThrough)
 	r.POST("/github_webhook", s.githubWebhookHandler)
-	r.POST("/file_upload", s.uploadHandler)
+	r.POST("/upload", s.uploadHandler)
 	r.POST("/git_url", s.gitHandler)
 	r.Run(address)
 	return nil // should never get here.
@@ -66,6 +67,8 @@ func (s *server) githubWebhookHandler(w http.ResponseWriter, r *http.Request, pa
 		helm.RespondWithJSON(w, response{"Failed to decode Github payload"}, http.StatusInternalServerError)
 	}
 
+	go s.buildWithGit(wh.Repository.URL, "")
+
 	helm.RespondWithJSON(w, response{"ok"}, http.StatusOK)
 }
 
@@ -73,34 +76,36 @@ func (s *server) githubWebhookHandler(w http.ResponseWriter, r *http.Request, pa
 func (s *server) uploadHandler(w http.ResponseWriter, r *http.Request, params url.Values) {
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		helm.RespondWithJSON(w, response{"failed to get file from form"}, http.StatusInternalServerError)
+		helm.RespondWithJSON(w, response{"failed to get file from form"}, http.StatusBadRequest)
 		return
 	}
 
-	defer file.Close()
-	tmpFile, err := ioutil.TempFile("", "upload-")
-	if err != nil {
-		helm.RespondWithJSON(w, response{"failed to create tmp file"}, http.StatusInternalServerError)
+	lang, ok := params["language"]
+	if !ok {
+		helm.RespondWithJSON(w, response{"Please specific a language parameter to build with."}, http.StatusBadRequest)
+		return
 	}
 
-	_, err = io.Copy(tmpFile, file)
-	if err != nil {
-		fmt.Println(err)
-		helm.RespondWithJSON(w, response{"failed to write tmp file"}, http.StatusInternalServerError)
-	}
-
-	go buildWithFiles(tmpFile, "golang", header.Header.Get("Content-Type")) // need lang from API
+	go s.buildWithFiles(file, lang[0], header.Header.Get("Content-Type")) // need lang from API
 
 	helm.RespondWithJSON(w, response{fmt.Sprintf("%s uploaded successfully", header.Filename)}, http.StatusOK)
 }
 
 // gitHandler is the http handler for bare git urls.
 func (s *server) gitHandler(w http.ResponseWriter, r *http.Request, params url.Values) {
-	var wh webhook
-	jsonDecoder := json.NewDecoder(r.Body)
-	if err := jsonDecoder.Decode(&wh); err != nil {
-		helm.RespondWithJSON(w, response{"Failed to decode Github payload"}, http.StatusInternalServerError)
+	lang, ok := params["language"]
+	if !ok {
+		helm.RespondWithJSON(w, response{"Please specific a language parameter to build with."}, http.StatusBadRequest)
+		return
 	}
+
+	gitUrl, ok := params["git_url"]
+	if !ok {
+		helm.RespondWithJSON(w, response{"Please specific a git_url parameter to clone with."}, http.StatusBadRequest)
+		return
+	}
+
+	go s.buildWithGit(gitUrl[0], lang[0])
 
 	helm.RespondWithJSON(w, response{"ok"}, http.StatusOK)
 }
