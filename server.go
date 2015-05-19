@@ -86,7 +86,7 @@ func (s *server) uploadHandler(w http.ResponseWriter, r *http.Request, params ur
 		return
 	}
 
-	go s.buildWithFiles(file, lang[0], header.Header.Get("Content-Type")) // need lang from API
+	go s.buildWithFiles(file, header.Filename, lang[0], header.Header.Get("Content-Type")) // need lang from API
 
 	helm.RespondWithJSON(w, response{fmt.Sprintf("%s uploaded successfully", header.Filename)}, http.StatusOK)
 }

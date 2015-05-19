@@ -73,7 +73,7 @@ func (s *server) buildWithGit(gitUrl, lang string) {
 }
 
 // buildWithFiles takes either a source file or zip file, language to build a docker image.
-func (s *server) buildWithFiles(f multipart.File, lang, contentType string) {
+func (s *server) buildWithFiles(f multipart.File, name, lang, contentType string) {
 	defer f.Close()
 
 	dir, err := ioutil.TempDir("", "bay-")
@@ -83,7 +83,7 @@ func (s *server) buildWithFiles(f multipart.File, lang, contentType string) {
 	}
 	defer os.RemoveAll(dir)
 
-	tmpFile, err := ioutil.TempFile(dir, "upload-")
+	tmpFile, err := os.Create(dir + "/" + name)
 	if err != nil {
 		s.callBack(dir, lang, err)
 		return
@@ -129,7 +129,7 @@ func (s *server) createContainer(dir, lang string) {
 		s.callBack(dir, lang, err)
 		return
 	}
-	contents := []byte(fmt.Sprintf("FROM %s\n EXPOSE %d", imageFromLang(lang), 8080)) //need to pick a free port.
+	contents := []byte(fmt.Sprintf("FROM %s\n EXPOSE %d", imageFromLang(lang), 8080))
 	if _, err := dockerFile.Write(contents); err != nil {
 		s.callBack(dir, lang, err)
 		return
@@ -161,9 +161,9 @@ func (s *server) createContainer(dir, lang string) {
 		Memory:          s.config.Memory,
 		Tty:             true,
 		OpenStdin:       false,
-		VolumesFrom:     dir,
 		Image:           imageName,
 		NetworkDisabled: false,
+		//ExposedPorts:    port,
 	}
 
 	hostConfig := &docker.HostConfig{} // set our container privileges...

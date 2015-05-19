@@ -23,8 +23,6 @@ func main() {
 
 func (aa a) PreBuild(buildDir, lang string, err error) {
 	fmt.Println(err)
-	fmt.Println(buildDir)
-	fmt.Println(lang)
 }
 
 func (aa a) PostBuild(container *docker.Container, lang string, err error) {
