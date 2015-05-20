@@ -22,23 +22,26 @@ func main() {
 }
 
 func (aa a) PreBuild(buildDir, lang string, err error) {
-	fmt.Println(err)
 }
 
 func (aa a) PostBuild(container *docker.Container, lang string, err error) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(container.ID)
 
 	client, err := docker.NewClient("unix:///var/run/docker.sock")
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println(container.Image)
-	fmt.Println(container.Name)
-	if err := client.StartContainer(container.ID, container.HostConfig); err != nil {
+	m := map[docker.Port][]docker.PortBinding{
+		"8080": []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: "8082"}},
+	}
+
+	fmt.Println(m)
+	hostConfig := &docker.HostConfig{PortBindings: m}
+
+	if err := client.StartContainer(container.ID, hostConfig); err != nil {
 		fmt.Println(err)
 	}
 }

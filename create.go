@@ -163,7 +163,6 @@ func (s *server) createContainer(dir, lang string) {
 		OpenStdin:       false,
 		Image:           imageName,
 		NetworkDisabled: false,
-		//ExposedPorts:    port,
 	}
 
 	hostConfig := &docker.HostConfig{} // set our container privileges...

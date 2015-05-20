@@ -40,7 +40,7 @@ type response struct {
 
 // Start get this API party started. It is just the http listener to start handling routes.
 func Start(address string, c *Config) error {
-	client, err := docker.NewClient(c.DockerUrl) // need to add TLS options to properly support swarm
+	client, err := docker.NewClient(c.DockerUrl)
 	if err != nil {
 		return err
 	}
