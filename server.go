@@ -7,7 +7,12 @@ import (
 	"net/url"
 
 	"github.com/acmacalister/helm"
+	linuxproc "github.com/c9s/goprocinfo/linux"
 	"github.com/fsouza/go-dockerclient"
+)
+
+const (
+	size = 1024 //for figuring out byte sizes.
 )
 
 // Build is type for implementing callback functions set in your config.
@@ -38,6 +43,20 @@ type response struct {
 	Response string `json:"response"`
 }
 
+// proc is a struct for the memory and disk info.
+type proc struct {
+	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+	Free  uint64 `json:"free"`
+}
+
+// procInfo is a struct for the info handler.
+type procInfo struct {
+	Memory proc    `json:"memory"`
+	Disk   proc    `json:"disk"`
+	CPU    float64 `json:"cpu"`
+}
+
 // Start get this API party started. It is just the http listener to start handling routes.
 func Start(address string, c *Config) error {
 	client, err := docker.NewClient(c.DockerUrl)
@@ -49,6 +68,7 @@ func Start(address string, c *Config) error {
 	r.POST("/github_webhook", s.githubWebhookHandler)
 	r.POST("/upload", s.uploadHandler)
 	r.POST("/git_url", s.gitHandler)
+	r.GET("/info", infoHandler)
 	r.Run(address)
 	return nil // should never get here.
 }
@@ -108,4 +128,33 @@ func (s *server) gitHandler(w http.ResponseWriter, r *http.Request, params url.V
 	go s.buildWithGit(gitUrl[0], lang[0])
 
 	helm.RespondWithJSON(w, response{"ok"}, http.StatusOK)
+}
+
+// infoHandler is an http handler for responding with the host memory/disk/cpu usage.
+func infoHandler(w http.ResponseWriter, r *http.Request, params url.Values) {
+	mem, err := linuxproc.ReadMemInfo("/proc/meminfo")
+	if err != nil {
+		helm.RespondWithJSON(w, response{"Failed to get memory info."}, http.StatusInternalServerError)
+		return
+	}
+
+	disk, err := linuxproc.ReadDisk("/")
+	if err != nil {
+		helm.RespondWithJSON(w, response{"Failed to get disk info."}, http.StatusInternalServerError)
+		return
+	}
+
+	cpu, err := linuxproc.ReadStat("/proc/stat")
+	if err != nil {
+		helm.RespondWithJSON(w, response{"Failed to get cpu info."}, http.StatusInternalServerError)
+		return
+	}
+
+	idle := float64(cpu.CPUStatAll.Idle)
+	total := float64(cpu.CPUStatAll.User+cpu.CPUStatAll.Nice+cpu.CPUStatAll.System) + idle
+	usage := 100 * (total - idle) / total
+	m := proc{Total: (mem.MemTotal / size), Used: ((mem.MemTotal - mem.MemFree) / size), Free: (mem.MemFree / size)}
+	d := proc{Total: (disk.All / size / size / size), Used: (disk.Used / size / size / size), Free: (disk.Free / size / size / size)}
+	info := procInfo{Memory: m, Disk: d, CPU: usage}
+	helm.RespondWithJSON(w, info, http.StatusOK)
 }
